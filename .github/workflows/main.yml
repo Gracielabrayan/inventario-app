@@ -29,7 +29,7 @@ jobs:
 
     - name: Construir la APK
       run: |
-        flet build apk --module-name main --include-packages flet,gspread --include-assets assets --description "App de Inventario" --org "com.inventario.app"
+        flet build apk --org "com.inventario.app" --project "Inventario"
 
     - name: Subir la APK lista
       uses: actions/upload-artifact@v4  # <--- AQUÍ ESTABA EL ERROR (Ahora es v4)
