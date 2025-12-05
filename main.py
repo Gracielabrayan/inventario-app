@@ -1,4 +1,3 @@
-from curses import COLOR_RED
 import flet as ft
 import gspread
 import json
