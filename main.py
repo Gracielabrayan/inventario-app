@@ -1,11 +1,20 @@
 import sys
-from unittest.mock import MagicMock
+import os
 
-# --- PARCHE PARA ANDROID (IMPORTANTE) ---
-# Engañamos a la app para que crea que existe el módulo de servidor web
-# que falta en los celulares. Como no lo usamos, no pasa nada.
-sys.modules["wsgiref"] = MagicMock()
-sys.modules["wsgiref.simple_server"] = MagicMock()
+# --- PARCHE HÍBRIDO (PC Y ANDROID) ---
+# Intentamos importar el módulo real (funciona en PC).
+# Si falla (porque estamos en Android), entonces aplicamos el parche.
+try:
+    import wsgiref.util
+    import wsgiref.simple_server
+except ImportError:
+    # Solo entramos aquí si estamos en Android (donde no existe wsgiref)
+    print("Aplicando parche de Android...")
+    from unittest.mock import MagicMock
+    m = MagicMock()
+    sys.modules["wsgiref"] = m
+    sys.modules["wsgiref.util"] = m
+    sys.modules["wsgiref.simple_server"] = m
 # ----------------------------------------
 
 import flet as ft
@@ -249,4 +258,7 @@ def main(page: ft.Page):
     conectar()
 
 if __name__ == "__main__":
-    ft.app(target=main)
+    # view=ft.WEB_BROWSER: Abre navegador y crea servidor web (necesario para celular)
+    # port=8550: Fija un puerto para que no cambie cada vez
+    # host="0.0.0.0": Permite que otros dispositivos (tu celular) entren
+    ft.app(target=main, view=ft.WEB_BROWSER, port=8550, host="192.168.0.17")
