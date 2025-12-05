@@ -1,13 +1,23 @@
+import sys
+from unittest.mock import MagicMock
+
+# --- PARCHE PARA ANDROID (IMPORTANTE) ---
+# Engañamos a la app para que crea que existe el módulo de servidor web
+# que falta en los celulares. Como no lo usamos, no pasa nada.
+sys.modules["wsgiref"] = MagicMock()
+sys.modules["wsgiref.simple_server"] = MagicMock()
+# ----------------------------------------
+
 import flet as ft
 import gspread
 import json
 import os
 
+# --- CONFIGURACIÓN ---
 SPREADSHEET_ID = "1OvBfVuOusls_4PCpYn4GtBUAdX3ww0EqtXCeuMUaWBw"
 
-# En Flet para Android, los archivos van en la carpeta 'assets'
-# pero al compilarse, quedan en la raíz del entorno.
-NOMBRE_LLAVE = "assets/credentials.json" 
+# Ajuste de rutas para Android
+NOMBRE_LLAVE = "assets/credentials.json"
 NOMBRE_DATOS = "assets/tiendas.json"
 
 def main(page: ft.Page):
@@ -25,7 +35,10 @@ def main(page: ft.Page):
     }
 
     def mostrar_snack(texto, color="blue"):
-        page.snack_bar = ft.SnackBar(content=ft.Text(texto, color="white"), bgcolor=color)
+        page.snack_bar = ft.SnackBar(
+            content=ft.Text(texto, color="white", weight="bold"), 
+            bgcolor=color,
+        )
         page.snack_bar.open = True
         page.update()
 
@@ -42,27 +55,48 @@ def main(page: ft.Page):
     )
 
     btn_refresh = ft.IconButton(
-        icon="refresh", icon_color="white", bgcolor="#333333",
+        icon="refresh", 
+        icon_color="white", 
+        bgcolor="#333333",
         on_click=lambda _: conectar()
     )
 
-    header = ft.Container(
+    header_container = ft.Container(
         content=ft.Column([
-            ft.Row([ft.Icon(name="inventory_2", color="#1976D2", size=30), ft.Text("Inventario", size=22, weight="bold")]),
-            ft.Row([dd_hojas, btn_refresh], spacing=10)
+            ft.Row([
+                ft.Icon(name="inventory_2", color="#1976D2", size=30),
+                ft.Text("Inventario POS", size=22, weight="bold"),
+            ]),
+            ft.Row([dd_hojas, btn_refresh], spacing=10) 
         ]),
-        padding=15, border_radius=15, bgcolor="#1e1e1e", margin=ft.margin.only(bottom=10)
+        padding=15,
+        border_radius=15,
+        bgcolor="#1e1e1e",
+        margin=ft.margin.only(bottom=10)
     )
 
-    # --- 3. CONTROLES DE BÚSQUEDA ---
+    # --- 3. INPUTS Y TABS ---
     
     # -- MANUAL --
-    txt_tienda_m = ft.TextField(label="Tienda", prefix_icon="store", col={"xs": 12, "md": 6}, border_radius=10, filled=True, bgcolor="#262626", border_width=0)
-    txt_caja_m = ft.TextField(label="Caja/Dato", prefix_icon="keyboard", col={"xs": 12, "md": 6}, border_radius=10, filled=True, bgcolor="#262626", border_width=0, on_submit=lambda e: buscar(e))
+    txt_tienda_m = ft.TextField(
+        label="Tienda", prefix_icon="store", 
+        col={"xs": 12, "md": 6}, border_radius=10, filled=True, bgcolor="#262626", border_width=0
+    )
+    txt_caja_m = ft.TextField(
+        label="Caja/Dato", prefix_icon="keyboard", 
+        col={"xs": 12, "md": 6}, border_radius=10, filled=True, bgcolor="#262626", border_width=0,
+        on_submit=lambda e: buscar_datos(e)
+    )
 
     # -- LISTAS --
-    dd_tienda_l = ft.Dropdown(label="Tienda", col={"xs": 12, "md": 6}, border_radius=10, filled=True, bgcolor="#262626", border_width=0)
-    dd_equipo_l = ft.Dropdown(label="Equipo", col={"xs": 12, "md": 6}, border_radius=10, filled=True, bgcolor="#262626", border_width=0, disabled=True)
+    dd_tienda_l = ft.Dropdown(
+        label="Tienda", 
+        col={"xs": 12, "md": 6}, border_radius=10, filled=True, bgcolor="#262626", border_width=0
+    )
+    dd_equipo_l = ft.Dropdown(
+        label="Equipo", 
+        col={"xs": 12, "md": 6}, border_radius=10, filled=True, bgcolor="#262626", border_width=0, disabled=True
+    )
 
     def actualizar_equipos(e):
         eqs = state["datos_tiendas"].get(dd_tienda_l.value, [])
@@ -73,35 +107,32 @@ def main(page: ft.Page):
 
     dd_tienda_l.on_change = actualizar_equipos
 
-    # --- PESTAÑAS (TABS) ---
-    # AQUÍ ESTABA EL PROBLEMA: Le damos altura fija para que no desaparezca
-    tabs = ft.Tabs(
+    # Tabs con altura fija para evitar error visual
+    tabs_control = ft.Tabs(
         selected_index=0,
         animation_duration=300,
-        height=320,  # <--- ESTO FUERZA A QUE SE VEAN LOS CAMPOS
+        height=350, 
         tabs=[
-            ft.Tab(
-                text="Manual", icon="keyboard",
-                content=ft.Container(
-                    content=ft.ResponsiveRow([txt_tienda_m, txt_caja_m], spacing=20),
-                    padding=20
-                )
-            ),
-            ft.Tab(
-                text="Listas", icon="list",
-                content=ft.Container(
-                    content=ft.ResponsiveRow([dd_tienda_l, dd_equipo_l], spacing=20),
-                    padding=20
-                )
-            ),
+            ft.Tab(text="Manual", icon="keyboard", content=ft.Container(content=ft.ResponsiveRow([txt_tienda_m, txt_caja_m], spacing=20), padding=20)),
+            ft.Tab(text="Listas", icon="list", content=ft.Container(content=ft.ResponsiveRow([dd_tienda_l, dd_equipo_l], spacing=20), padding=20)),
         ]
     )
 
-    btn_buscar = ft.ElevatedButton("BUSCAR", icon="search", style=ft.ButtonStyle(bgcolor="#1976D2", color="white", padding=20, shape=ft.RoundedRectangleBorder(radius=10)), width=1000, on_click=lambda e: buscar(e))
+    btn_buscar = ft.ElevatedButton(
+        "BUSCAR", icon="search", 
+        style=ft.ButtonStyle(bgcolor="#1976D2", color="white", padding=15, shape=ft.RoundedRectangleBorder(radius=10)), 
+        width=1000, 
+        on_click=lambda e: buscar_datos(e)
+    )
 
     # --- 4. RESULTADOS ---
     grid_res = ft.ResponsiveRow(spacing=10)
-    btn_save = ft.ElevatedButton("GUARDAR", icon="save", disabled=True, style=ft.ButtonStyle(bgcolor="#388E3C", color="white", padding=20), width=1000, on_click=lambda e: guardar(e))
+    btn_save = ft.ElevatedButton(
+        "GUARDAR", icon="save", disabled=True, 
+        style=ft.ButtonStyle(bgcolor="#388E3C", color="white", padding=15), 
+        width=1000, 
+        on_click=lambda e: guardar(e)
+    )
 
     card_res = ft.Container(
         content=ft.Column([
@@ -114,33 +145,28 @@ def main(page: ft.Page):
         bgcolor="#1e1e1e", padding=20, border_radius=15, visible=False
     )
 
-    # --- LÓGICA (Reemplaza solo la función conectar) ---
+    # --- LÓGICA ---
     def conectar():
         try:
             btn_refresh.icon = "downloading"
-            dd_hojas.hint_text = "Conectando..."
             page.update()
             
-            # --- AJUSTE CLAVE PARA ANDROID ---
-            # En Android, a veces la ruta 'assets/' molesta si no se resuelve bien.
-            # Intentamos leer directo, si falla, probamos sin el prefijo.
+            # Ajuste de rutas para Android
             json_key = NOMBRE_LLAVE
             if not os.path.exists(json_key) and os.path.exists("credentials.json"):
                 json_key = "credentials.json"
 
-            # 1. Conexión Google
             gc = gspread.service_account(filename=json_key)
             sh = gc.open_by_key(SPREADSHEET_ID)
             state["sh"] = sh
+            
             hojas = [w.title for w in sh.worksheets()]
             dd_hojas.options = [ft.dropdown.Option(h) for h in hojas]
             if hojas: 
                 dd_hojas.value = hojas[0]
                 dd_hojas.hint_text = "Selecciona Hoja"
-            
-            mostrar_snack("✅ Conectado a Google Sheets", COLOR_RED)
 
-            # 2. Carga Datos Locales
+            # Carga JSON local
             path_datos = NOMBRE_DATOS
             if not os.path.exists(path_datos) and os.path.exists("tiendas.json"):
                 path_datos = "tiendas.json"
@@ -150,22 +176,18 @@ def main(page: ft.Page):
                     with open(path_datos, 'r', encoding='utf-8') as f:
                         data = json.load(f)
                         state["datos_tiendas"] = data
-                        tiendas = sorted(list(data.keys()))
-                        dd_tienda_lista.options = [ft.dropdown.Option(str(t)) for t in tiendas] # type: ignore
-                except Exception as e_json:
-                     print(f"Error JSON: {e_json}")
-            
-            btn_refresh.icon = "check"
+                        dd_tienda_l.options = [ft.dropdown.Option(k) for k in sorted(data.keys())]
+                except: pass
 
+            btn_refresh.icon = "check"
+            mostrar_snack("Conectado", "#388E3C")
         except Exception as e:
             btn_refresh.icon = "error"
-            mostrar_snack(f"❌ Error: {e}", "red")
-            dd_hojas.hint_text = "Error de conexión"
-        
+            mostrar_snack(f"Error: {e}", "red")
         page.update()
 
-    def buscar(e):
-        if tabs.selected_index == 0:
+    def buscar_datos(e):
+        if tabs_control.selected_index == 0:
             tienda, dato = txt_tienda_m.value, txt_caja_m.value.upper()
         else:
             tienda, dato = dd_tienda_l.value, dd_equipo_l.value
@@ -184,7 +206,7 @@ def main(page: ft.Page):
             
             found = None
             for i, row in enumerate(vals[1:]):
-                if len(row) > col_t and str(row[col_t]).strip() == tienda:
+                if len(row) > col_t and str(row[col_t]).strip() == str(tienda):
                     row_str = " ".join([str(x).upper() for x in row])
                     if not dato or str(dato).upper() in row_str:
                         found = row
@@ -205,7 +227,7 @@ def main(page: ft.Page):
                 
                 card_res.visible = True
                 btn_save.disabled = False
-                mostrar_snack("Encontrado", "green")
+                mostrar_snack("Encontrado", "#388E3C")
             else:
                 mostrar_snack("No encontrado", "red")
 
@@ -217,17 +239,14 @@ def main(page: ft.Page):
         try:
             row = [state["inputs"].get(h, ft.TextField(value="")).value for h in state["headers"]]
             state["ws"].update(range_name=f"A{state['row_idx']}", values=[row])
-            mostrar_snack("Guardado", "green")
+            mostrar_snack("Guardado", "#388E3C")
             card_res.visible = False
         except Exception as ex:
             mostrar_snack(str(ex), "red")
         page.update()
 
-    # Layout
-    page.add(header, tabs, btn_buscar, ft.Container(height=20), card_res)
+    page.add(header_container, tabs_control, btn_buscar, ft.Container(height=20), card_res)
     conectar()
 
 if __name__ == "__main__":
-    try: os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    except: pass
-    ft.app(target=main, view=ft.WEB_BROWSER, port=8550, host="192.168.0.17")
+    ft.app(target=main)
