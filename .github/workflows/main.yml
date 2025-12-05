@@ -1,0 +1,33 @@
+name: Construir APK de Android
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Descargar código
+      uses: actions/checkout@v3
+
+    - name: Preparar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Instalar Flet y herramientas
+      run: |
+        pip install flet gspread
+
+    - name: Construir la APK
+      # Aquí sucede la magia. Incluimos la carpeta assets para que lleve tus JSON
+      run: |
+        flet build apk --module-name main --include-packages flet,gspread --include-assets assets --description "App de Inventario"
+
+    - name: Subir la APK lista
+      uses: actions/upload-artifact@v3
+      with:
+        name: app-inventario-release
+        path: build/apk/*.apk
