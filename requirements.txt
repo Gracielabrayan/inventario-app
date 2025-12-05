@@ -1,2 +1,4 @@
 flet
 gspread
+requests
+google-auth
