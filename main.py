@@ -2,6 +2,7 @@ import flet as ft
 import json
 import os
 import sys
+import time
 
 # --- CONFIGURACIÓN ---
 SPREADSHEET_ID = "1OvBfVuOusls_4PCpYn4GtBUAdX3ww0EqtXCeuMUaWBw"
@@ -37,43 +38,34 @@ NOMBRE_DATOS = "assets/tiendas.json"
 NOMBRE_DATOS_POS = "assets/tiendas_pos.json"
 
 def main(page: ft.Page):
-    # Configuración básica visual antes de cargar nada pesado
-    page.title = "Cargando..."
+    # Config visual
+    page.title = "Sistema POS"
     page.theme_mode = "dark"
     page.bgcolor = "#0f0f0f"
     page.padding = 20
     page.scroll = "auto"
 
-    # --- TEXTO DE DEBUG (Vital para ver errores en el celular) ---
-    txt_debug = ft.Text("Iniciando sistema...", color="yellow", size=16)
-    page.add(txt_debug)
-    page.update()
+    # --- LOGGER EN PANTALLA ---
+    # Usaremos esto para ver qué está pasando sin borrar la pantalla
+    log_view = ft.Column()
+    page.add(ft.Text("--- REGISTRO DE INICIO ---", color="grey"), log_view)
+    
+    def log(msg, color="yellow"):
+        log_view.controls.append(ft.Text(f"> {msg}", color=color, size=14))
+        page.update()
 
-    # --- CARGA PROTEGIDA DE LIBRERÍAS ---
+    log("Iniciando aplicación...")
+
+    # --- CARGA DIFERIDA ---
     try:
-        txt_debug.value = "Cargando librería gspread..."
-        page.update()
-        
-        # IMPORTAMOS AQUÍ, NO ARRIBA. 
-        # Si falla, saltamos al except sin romper la pantalla.
-        import gspread 
-        
-        txt_debug.value = "Librerías cargadas. Iniciando interfaz..."
-        page.update()
-    except Exception as e_import:
-        page.clean()
-        page.add(
-            ft.Column([
-                ft.Icon(ft.icons.BROKEN_IMAGE, color="red", size=60),
-                ft.Text("ERROR DE LIBRERÍA", color="red", size=30, weight="bold"),
-                ft.Text("Falta una librería en requirements.txt", size=20, weight="bold"),
-                ft.Divider(),
-                ft.Text(f"Detalle técnico:\n{e_import}", size=16, color="white"),
-            ])
-        )
-        return # Detenemos la ejecución aquí
+        log("Importando gspread...", "cyan")
+        import gspread
+        log("Librerías OK.", "green")
+    except Exception as e:
+        log(f"FALLO IMPORT: {e}", "red")
+        return
 
-    # --- ESTADO DE LA APP ---
+    # --- ESTADO ---
     state = {
         "sh": None, "ws": None, 
         "datos_tiendas": {}, 
@@ -87,33 +79,41 @@ def main(page: ft.Page):
         page.snack_bar.open = True
         page.update()
 
-    # --- DEFINICIÓN DE CONTROLES (Tu código original) ---
-    dd_hojas = ft.Dropdown(hint_text="Cargando hojas...", text_size=16, bgcolor="#333333", border_radius=8, filled=True, width=400)
+    # --- UI COMPONENTS ---
+    log("Construyendo interfaz...", "cyan")
+    
+    dd_hojas = ft.Dropdown(hint_text="Seleccione hoja...", text_size=16, bgcolor="#333333", border_radius=8, filled=True, width=400)
+    
+    # Botón refrescar MANUAL
     btn_refresh = ft.IconButton(icon="refresh", icon_color="white", bgcolor="#333333", on_click=lambda _: conectar())
 
-    # Controles POS
     dd_tienda_pos = ft.Dropdown(label="Tienda (POS)", width=300, text_size=16, icon="store")
     dd_caja_pos = ft.Dropdown(label="Caja #", width=300, text_size=16, disabled=True, icon="point_of_sale")
     
-    # Controles Balanzas
     dd_tienda_l = ft.Dropdown(label="Tienda (Balanza)", width=300, text_size=16)
     dd_equipo_l = ft.Dropdown(label="Equipo / IP", disabled=True, width=300, text_size=16)
 
     def actualizar_cajas_pos(e):
-        tienda_sel = dd_tienda_pos.value
-        cajas = state["datos_pos"].get(tienda_sel, [])
-        if cajas: cajas.sort()
-        dd_caja_pos.options = [ft.dropdown.Option(str(x)) for x in cajas]
-        dd_caja_pos.disabled = not bool(cajas)
-        dd_caja_pos.value = None
-        page.update()
+        try:
+            tienda_sel = dd_tienda_pos.value
+            cajas = state["datos_pos"].get(tienda_sel, [])
+            if cajas: cajas.sort()
+            dd_caja_pos.options = [ft.dropdown.Option(str(x)) for x in cajas]
+            dd_caja_pos.disabled = not bool(cajas)
+            dd_caja_pos.value = None
+            page.update()
+        except Exception as ex:
+            log(f"Error UI Cajas: {ex}", "red")
 
     def actualizar_equipos(e):
-        eqs = state["datos_tiendas"].get(dd_tienda_l.value, [])
-        dd_equipo_l.options = [ft.dropdown.Option(str(x)) for x in eqs]
-        dd_equipo_l.disabled = not bool(eqs)
-        if eqs: dd_equipo_l.value = str(eqs[0])
-        page.update()
+        try:
+            eqs = state["datos_tiendas"].get(dd_tienda_l.value, [])
+            dd_equipo_l.options = [ft.dropdown.Option(str(x)) for x in eqs]
+            dd_equipo_l.disabled = not bool(eqs)
+            if eqs: dd_equipo_l.value = str(eqs[0])
+            page.update()
+        except Exception as ex:
+            log(f"Error UI Equipos: {ex}", "red")
 
     dd_tienda_pos.on_change = actualizar_cajas_pos
     dd_tienda_l.on_change = actualizar_equipos
@@ -144,6 +144,7 @@ def main(page: ft.Page):
         page.update()
 
     dd_hojas.on_change = on_hoja_change
+    
     tabs = ft.Tabs(
         selected_index=0, height=220, on_change=on_tab_change,
         tabs=[
@@ -158,46 +159,54 @@ def main(page: ft.Page):
     btn_save = ft.Container(content=ft.ElevatedButton("GUARDAR CAMBIOS", icon="save", disabled=True, width=300, height=50, style=ft.ButtonStyle(bgcolor="#388E3C", color="white"), on_click=lambda e: guardar(e)), alignment=ft.alignment.center)
     card_res = ft.Container(content=ft.Column([ft.Text("Editar Datos", size=20, weight="bold"), ft.Divider(), grid_res, ft.Container(height=20), btn_save]), bgcolor="#1e1e1e", padding=20, border_radius=15, visible=False)
 
-    # --- LÓGICA DE CONEXIÓN ---
+    # --- LÓGICA CONEXIÓN ---
     def conectar():
-        txt_debug.value = "Conectando..."
-        page.update()
+        log("Intentando conectar...", "yellow")
         try:
             btn_refresh.icon = "downloading"
             page.update()
             
-            # Chequeo de seguridad de archivos
+            # ASSETS
             if not os.path.exists(NOMBRE_LLAVE):
-                raise FileNotFoundError(f"Falta archivo: {NOMBRE_LLAVE}")
+                log(f"FATA: No existe {NOMBRE_LLAVE}", "red")
+                mostrar_snack("Faltan credenciales", "red")
+                return
             
+            log("Leyendo credenciales...", "cyan")
             gc = gspread.service_account(filename=NOMBRE_LLAVE)
+            
+            log("Abriendo Sheet...", "cyan")
             sh = gc.open_by_key(SPREADSHEET_ID)
             state["sh"] = sh
             
             hojas = [w.title for w in sh.worksheets()]
             dd_hojas.options = [ft.dropdown.Option(h) for h in hojas]
             if hojas: dd_hojas.value = hojas[0]
+            log(f"Hojas cargadas: {len(hojas)}", "green")
 
             # Cargar JSONs
             for ruta, destino_state, dd_obj in [(NOMBRE_DATOS, "datos_tiendas", dd_tienda_l), (NOMBRE_DATOS_POS, "datos_pos", dd_tienda_pos)]:
                 if os.path.exists(ruta):
-                    with open(ruta, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        state[destino_state] = data
-                        dd_obj.options = [ft.dropdown.Option(k) for k in sorted(data.keys())]
+                    try:
+                        with open(ruta, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            state[destino_state] = data
+                            dd_obj.options = [ft.dropdown.Option(k) for k in sorted(data.keys())]
+                        log(f"JSON cargado: {ruta}", "green")
+                    except Exception as json_e:
+                        log(f"Error JSON {ruta}: {json_e}", "orange")
+                else:
+                    log(f"No existe JSON: {ruta}", "orange")
             
             btn_refresh.icon = "check"
-            txt_debug.value = "" # Borramos el texto de debug si todo sale bien
-            mostrar_snack("Conectado", "#388E3C")
+            mostrar_snack("Conectado Exitosamente", "#388E3C")
             
         except Exception as e:
             btn_refresh.icon = "error"
-            txt_debug.value = f"ERROR AL CONECTAR: {str(e)}"
-            txt_debug.color = "red"
-            mostrar_snack(f"Error: {e}", "red")
+            log(f"ERROR CRÍTICO: {e}", "red")
+            mostrar_snack("Error de conexión (Ver log)", "red")
         page.update()
 
-    # Función auxiliar para comparar 015 == 15
     def es_coincidencia(valor_celda, valor_buscado):
         s_celda, s_buscado = str(valor_celda).strip().upper(), str(valor_buscado).strip().upper()
         if not s_buscado: return True
@@ -206,6 +215,7 @@ def main(page: ft.Page):
         return False
 
     def buscar_datos(e):
+        log("Buscando...", "cyan")
         try:
             if tabs.selected_index == 0:
                 tienda, dato = str(dd_tienda_pos.value).strip(), str(dd_caja_pos.value).strip() if dd_caja_pos.value else ""
@@ -223,7 +233,6 @@ def main(page: ft.Page):
             state["headers"] = headers
             found = None
             
-            # TU LÓGICA DE BÚSQUEDA FUERZA BRUTA
             for i, row in enumerate(vals[1:]):
                 tienda_en_fila = False
                 for celda in row:
@@ -256,8 +265,13 @@ def main(page: ft.Page):
                         campo = ft.TextField(label=h, value=val, read_only=is_lock, width=400, height=60, bgcolor="#1a1a1a" if is_lock else None)
                     state["inputs"][h] = campo; grid_res.controls.append(campo)
                 card_res.visible = True; btn_save.content.disabled = False; mostrar_snack("Encontrado", "#388E3C")
-            else: mostrar_snack(f"No encontrado: {tienda} - {dato}", "red")
-        except Exception as ex: mostrar_snack(str(ex), "red")
+                log("Dato encontrado.", "green")
+            else: 
+                mostrar_snack(f"No encontrado", "red")
+                log("No se encontró coincidencia.", "orange")
+        except Exception as ex: 
+            mostrar_snack("Error búsqueda", "red")
+            log(f"Error búsqueda: {ex}", "red")
         page.update()
 
     def guardar(e):
@@ -265,25 +279,32 @@ def main(page: ft.Page):
             row = [state["inputs"].get(h, ft.TextField(value="")).value for h in state["headers"]]
             state["ws"].update(range_name=f"A{state['row_idx']}", values=[row])
             mostrar_snack("Guardado", "#388E3C"); card_res.visible = False; btn_save.content.disabled = True
-        except Exception as ex: mostrar_snack(str(ex), "red")
+        except Exception as ex: 
+            mostrar_snack("Error guardado", "red")
+            log(f"Error guardar: {ex}", "red")
         page.update()
 
-    # --- ARMAR PAGINA ---
-    page.clean()
+    # --- MONTAJE FINAL (SIN BORRAR PANTALLA) ---
+    log("Añadiendo elementos visuales...", "cyan")
+    
+    # NO USAMOS page.clean() AQUÍ PARA QUE SE VEAN LOS ERRORES
     page.add(
+        ft.Divider(),
         ft.Row([ft.Icon(name="inventory_2", color="#1976D2", size=30), ft.Text("Inventario POS", size=24, weight="bold")]),
-        ft.Container(height=20),
+        ft.Container(height=10),
         ft.Row([dd_hojas, btn_refresh]),
-        txt_debug, # El texto que nos dirá si algo falla
-        ft.Container(height=20),
+        ft.Container(height=10),
         tabs,
         ft.Container(height=20),
         btn_buscar,
         ft.Container(height=30),
         card_res,
     )
-    
-    conectar()
+    log("Interfaz lista. Presione refrescar para conectar.", "green")
+
+    # ¡IMPORTANTE! NO LLAMAMOS A conectar() AUTOMÁTICAMENTE
+    # Esto evita que se congele al iniciar.
+    # conectar() 
 
 if __name__ == "__main__":
     ft.app(target=main)
