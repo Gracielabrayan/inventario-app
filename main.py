@@ -1,7 +1,22 @@
+import sys
+import os
+
+# --- PARCHE DE EMERGENCIA PARA ANDROID (CRÍTICO) ---
+# Esto arregla el error "No module named 'wsgiref'"
+try:
+    import wsgiref.util
+    import wsgiref.simple_server
+except ImportError:
+    # Si estamos en Android y falla, creamos módulos falsos
+    from unittest.mock import MagicMock
+    m = MagicMock()
+    sys.modules["wsgiref"] = m
+    sys.modules["wsgiref.util"] = m
+    sys.modules["wsgiref.simple_server"] = m
+# ---------------------------------------------------
+
 import flet as ft
 import json
-import os
-import sys
 import time
 
 # --- CONFIGURACIÓN ---
@@ -46,7 +61,6 @@ def main(page: ft.Page):
     page.scroll = "auto"
 
     # --- LOGGER EN PANTALLA ---
-    # Usaremos esto para ver qué está pasando sin borrar la pantalla
     log_view = ft.Column()
     page.add(ft.Text("--- REGISTRO DE INICIO ---", color="grey"), log_view)
     
@@ -63,7 +77,8 @@ def main(page: ft.Page):
         log("Librerías OK.", "green")
     except Exception as e:
         log(f"FALLO IMPORT: {e}", "red")
-        return
+        # No retornamos aquí para que intente cargar la interfaz aunque falle la librería
+        # así puedes ver el error completo
 
     # --- ESTADO ---
     state = {
@@ -301,10 +316,6 @@ def main(page: ft.Page):
         card_res,
     )
     log("Interfaz lista. Presione refrescar para conectar.", "green")
-
-    # ¡IMPORTANTE! NO LLAMAMOS A conectar() AUTOMÁTICAMENTE
-    # Esto evita que se congele al iniciar.
-    # conectar() 
 
 if __name__ == "__main__":
     ft.app(target=main)
