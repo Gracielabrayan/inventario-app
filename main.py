@@ -2,13 +2,10 @@ import sys
 import os
 
 # --- PARCHE HÍBRIDO (PC Y ANDROID) ---
-# Intentamos importar el módulo real (funciona en PC).
-# Si falla (porque estamos en Android), entonces aplicamos el parche.
 try:
     import wsgiref.util
     import wsgiref.simple_server
 except ImportError:
-    # Solo entramos aquí si estamos en Android (donde no existe wsgiref)
     print("Aplicando parche de Android...")
     from unittest.mock import MagicMock
     m = MagicMock()
@@ -25,22 +22,45 @@ import os
 # --- CONFIGURACIÓN ---
 SPREADSHEET_ID = "1OvBfVuOusls_4PCpYn4GtBUAdX3ww0EqtXCeuMUaWBw"
 
-# Ajuste de rutas para Android
+OPCIONES_DROPDOWN = {
+    "TECNICO": ["Rafael Cáceres", "Alejandro Massello", "Jorge Montilla"],
+    "ESTADO POS": ["POS ONLINE", "POS OFFLINE", "FUERA MLAN"],
+    "CONDICION POS": ["OPERATIVA", "NO OPERATIVA", "FUERA MLAN"],
+    "CPU MARCA": ["NCR", "TOSHIBA", "GIRBOY", "NO APLICA"],
+    "TIPO CAJA": ["CAJA COMUN", "ECOMMERCE", "FARMACIA", "AUTOCENTER", "MAYORISTA", "SELF SCANNING", "SSCO", "AT. CLIENTE", "AUTOSERVICIO"],
+    "SOFTWARE CAJA": ["NCR", "GIRBOY"],
+    "PROVEEDOR TECLADO": ["TOSHIBA", "NCR", "GIRBOY", "NO APLICA"],
+    "PROVEEDOR GAVETA": ["NCR", "TOSHIBA", "NO APLICA"],
+    "PROVEEDOR MONITOR": ["LG", "GIRBOY", "ELO TOUCH", "ILO", "DELL", "SAMSUNG", "PHILLIPS", "NOBLEX", "HP"],
+    "TIPO MONITOR": ["COMUN 19 PULG", "GIRBOY", "ELO TOUCH", "TV MONITOR ILO", "COMUN 17 PULG", "MONITOR LED 19 PULG", "193V5LSB2 / 55", "MK24X7100", "19M38A", "19M35A", "HP V190", "W1943SE"],
+    "PROVEEDOR PISTOLA": ["ZEBRA", "SYMBOL", "NO APLICA", "GIRBOY", "DATALOGIC", "HONEYWELL", "WALMART"],
+    "MODELO PISTOLA": ["DS2208", "LS2208", "NO APLICA", "GIRBOY", "LS4208", "GD4400", "MS5145", "QW2120", "WALMART", "QD2100"],
+    "TIPO IMPRESORA": ["FISCAL", "NO FISCAL"],
+    "MARCA IMPRESORA": ["EPSON", "GIRBOY"],
+    "MODELO IMPRESORA": ["TM-T20II", "TM-T88IV", "TM-T88V", "GIRBOY"],
+    "TIPO ESCANER": ["ESCANER BIOPTICO", "BALANZA ESCANER", "NO APLICA"],
+    "PROVEEDOR ESCANER": ["HASAR", "NCR", "GIRBOY"],
+    "EQUIPO": ["COSTOS", "AUTOSERVICIO"],
+    "MARCA": ["METTLER TOLEDO", "SYSTEL", "RASPBERRY"],
+    "SECTOR": ["VERDULERIA", "DELI", "CARNICERIA", "PESCADERIA", "FIAMBRES", "QUESOS", "LINEA DE CAJAS", "POLLOS", "BACKUP", "NO EXISTE", "ROTISERIA", "TORTAS", "REPOSTERIA"],
+    "CONDICION": ["OPERATIVA", "NO OPERATIVA"],
+    "MODELO": ["COSTOS", "HIBRIDA", "GIRBOY"]
+}
+
 NOMBRE_LLAVE = "assets/credentials.json"
 NOMBRE_DATOS = "assets/tiendas.json"
 
 def main(page: ft.Page):
-    # --- 1. CONFIGURACIÓN VISUAL ---
-    page.title = "Inventario Móvil"
+    page.title = "Inventario POS"
     page.theme_mode = "dark"
-    page.padding = 10
+    page.padding = 20
     page.bgcolor = "#0f0f0f"
-    page.scroll = "adaptive"
+    page.scroll = "auto"
 
     state = {
         "sh": None, "ws": None, "datos_tiendas": {}, 
-        "current_headers": [], "mapa_headers": {}, 
-        "inputs_editables": {}, "fila_actual": None
+        "headers": [], "inputs": {}, "row_idx": None,
+        "updating": False  # Flag para evitar loops
     }
 
     def mostrar_snack(texto, color="blue"):
@@ -51,16 +71,14 @@ def main(page: ft.Page):
         page.snack_bar.open = True
         page.update()
 
-    # --- 2. HEADER ---
+    # --- HEADER ---
     dd_hojas = ft.Dropdown(
         hint_text="Cargando...",
         text_size=16,
-        border_color="transparent",
         bgcolor="#333333",
         border_radius=8,
         filled=True,
-        expand=True,
-        content_padding=12,
+        width=400,
     )
 
     btn_refresh = ft.IconButton(
@@ -70,41 +88,33 @@ def main(page: ft.Page):
         on_click=lambda _: conectar()
     )
 
-    header_container = ft.Container(
-        content=ft.Column([
-            ft.Row([
-                ft.Icon(name="inventory_2", color="#1976D2", size=30),
-                ft.Text("Inventario POS", size=22, weight="bold"),
-            ]),
-            ft.Row([dd_hojas, btn_refresh], spacing=10) 
-        ]),
-        padding=15,
-        border_radius=15,
-        bgcolor="#1e1e1e",
-        margin=ft.margin.only(bottom=10)
-    )
-
-    # --- 3. INPUTS Y TABS ---
-    
-    # -- MANUAL --
+    # --- TABS ---
     txt_tienda_m = ft.TextField(
-        label="Tienda", prefix_icon="store", 
-        col={"xs": 12, "md": 6}, border_radius=10, filled=True, bgcolor="#262626", border_width=0
+        label="Tienda", 
+        prefix_icon="store",
+        width=300,
+        height=60,
     )
+    
     txt_caja_m = ft.TextField(
-        label="Caja/Dato", prefix_icon="keyboard", 
-        col={"xs": 12, "md": 6}, border_radius=10, filled=True, bgcolor="#262626", border_width=0,
-        on_submit=lambda e: buscar_datos(e)
+        label="Caja/Dato", 
+        prefix_icon="keyboard",
+        width=300,
+        height=60,
+        on_submit=lambda e: buscar_datos(e),
     )
 
-    # -- LISTAS --
     dd_tienda_l = ft.Dropdown(
-        label="Tienda", 
-        col={"xs": 12, "md": 6}, border_radius=10, filled=True, bgcolor="#262626", border_width=0
+        label="Tienda",
+        width=300,
+        text_size=16,
     )
+    
     dd_equipo_l = ft.Dropdown(
         label="Equipo", 
-        col={"xs": 12, "md": 6}, border_radius=10, filled=True, bgcolor="#262626", border_width=0, disabled=True
+        disabled=True,
+        width=300,
+        text_size=16,
     )
 
     def actualizar_equipos(e):
@@ -116,42 +126,111 @@ def main(page: ft.Page):
 
     dd_tienda_l.on_change = actualizar_equipos
 
-    # Tabs con altura fija para evitar error visual
-    tabs_control = ft.Tabs(
+    def on_hoja_change(e):
+        """Cambiar tab automáticamente según la hoja seleccionada"""
+        if state["updating"]:
+            return
+        
+        state["updating"] = True
+        hoja = dd_hojas.value
+        if hoja and ("BALANZA" in hoja.upper() or "COSTO" in hoja.upper()):
+            tabs.selected_index = 1  # BALANZAS
+        else:
+            tabs.selected_index = 0  # POS
+        state["updating"] = False
+        page.update()
+    
+    def on_tab_change(e):
+        """Cambiar hoja automáticamente según el tab seleccionado"""
+        if state["updating"] or not dd_hojas.options:
+            return
+        
+        state["updating"] = True
+        
+        if tabs.selected_index == 0:  # POS
+            # Buscar hoja que contenga "POS" pero NO "BALANZA" ni "COSTO"
+            for opt in dd_hojas.options:
+                hoja = opt.key
+                if "POS" in hoja.upper() and "BALANZA" not in hoja.upper() and "COSTO" not in hoja.upper():
+                    dd_hojas.value = hoja
+                    break
+        else:  # BALANZAS
+            # Buscar hoja que contenga "BALANZA" o "COSTO"
+            for opt in dd_hojas.options:
+                hoja = opt.key
+                if "BALANZA" in hoja.upper() or "COSTO" in hoja.upper():
+                    dd_hojas.value = hoja
+                    break
+        
+        state["updating"] = False
+        page.update()
+    
+    dd_hojas.on_change = on_hoja_change
+
+    tabs = ft.Tabs(
         selected_index=0,
-        animation_duration=300,
-        height=350, 
+        height=220,
+        on_change=on_tab_change,
         tabs=[
-            ft.Tab(text="Manual", icon="keyboard", content=ft.Container(content=ft.ResponsiveRow([txt_tienda_m, txt_caja_m], spacing=20), padding=20)),
-            ft.Tab(text="Listas", icon="list", content=ft.Container(content=ft.ResponsiveRow([dd_tienda_l, dd_equipo_l], spacing=20), padding=20)),
+            ft.Tab(
+                text="POS", 
+                icon="keyboard",
+                content=ft.Container(
+                    content=ft.Column([txt_tienda_m, txt_caja_m], spacing=15),
+                    padding=20,
+                )
+            ),
+            ft.Tab(
+                text="BALANZAS", 
+                icon="list",
+                content=ft.Container(
+                    content=ft.Column([dd_tienda_l, dd_equipo_l], spacing=15),
+                    padding=20,
+                )
+            ),
         ]
     )
 
-    btn_buscar = ft.ElevatedButton(
-        "BUSCAR", icon="search", 
-        style=ft.ButtonStyle(bgcolor="#1976D2", color="white", padding=15, shape=ft.RoundedRectangleBorder(radius=10)), 
-        width=1000, 
-        on_click=lambda e: buscar_datos(e)
+    btn_buscar = ft.Container(
+        content=ft.ElevatedButton(
+            "BUSCAR", 
+            icon="search",
+            width=300,
+            height=50,
+            style=ft.ButtonStyle(bgcolor="#1976D2", color="white"),
+            on_click=lambda e: buscar_datos(e)
+        ),
+        alignment=ft.alignment.center,
     )
 
-    # --- 4. RESULTADOS ---
-    grid_res = ft.ResponsiveRow(spacing=10)
-    btn_save = ft.ElevatedButton(
-        "GUARDAR", icon="save", disabled=True, 
-        style=ft.ButtonStyle(bgcolor="#388E3C", color="white", padding=15), 
-        width=1000, 
-        on_click=lambda e: guardar(e)
+    # --- RESULTADOS ---
+    grid_res = ft.Column(spacing=15)
+    
+    btn_save = ft.Container(
+        content=ft.ElevatedButton(
+            "GUARDAR CAMBIOS", 
+            icon="save", 
+            disabled=True,
+            width=300,
+            height=50,
+            style=ft.ButtonStyle(bgcolor="#388E3C", color="white"),
+            on_click=lambda e: guardar(e)
+        ),
+        alignment=ft.alignment.center,
     )
 
     card_res = ft.Container(
         content=ft.Column([
-            ft.Text("Editar Datos", size=18, weight="bold"),
+            ft.Text("Editar Datos", size=20, weight="bold"),
             ft.Divider(),
             grid_res,
-            ft.Container(height=10),
+            ft.Container(height=20),
             btn_save
         ]),
-        bgcolor="#1e1e1e", padding=20, border_radius=15, visible=False
+        bgcolor="#1e1e1e", 
+        padding=20, 
+        border_radius=15, 
+        visible=False
     )
 
     # --- LÓGICA ---
@@ -160,7 +239,6 @@ def main(page: ft.Page):
             btn_refresh.icon = "downloading"
             page.update()
             
-            # Ajuste de rutas para Android
             json_key = NOMBRE_LLAVE
             if not os.path.exists(json_key) and os.path.exists("credentials.json"):
                 json_key = "credentials.json"
@@ -173,9 +251,7 @@ def main(page: ft.Page):
             dd_hojas.options = [ft.dropdown.Option(h) for h in hojas]
             if hojas: 
                 dd_hojas.value = hojas[0]
-                dd_hojas.hint_text = "Selecciona Hoja"
 
-            # Carga JSON local
             path_datos = NOMBRE_DATOS
             if not os.path.exists(path_datos) and os.path.exists("tiendas.json"):
                 path_datos = "tiendas.json"
@@ -186,7 +262,8 @@ def main(page: ft.Page):
                         data = json.load(f)
                         state["datos_tiendas"] = data
                         dd_tienda_l.options = [ft.dropdown.Option(k) for k in sorted(data.keys())]
-                except: pass
+                except: 
+                    pass
 
             btn_refresh.icon = "check"
             mostrar_snack("Conectado", "#388E3C")
@@ -196,10 +273,12 @@ def main(page: ft.Page):
         page.update()
 
     def buscar_datos(e):
-        if tabs_control.selected_index == 0:
-            tienda, dato = txt_tienda_m.value, txt_caja_m.value.upper()
+        if tabs.selected_index == 0:
+            tienda = txt_tienda_m.value
+            dato = txt_caja_m.value.upper() if txt_caja_m.value else ""
         else:
-            tienda, dato = dd_tienda_l.value, dd_equipo_l.value
+            tienda = dd_tienda_l.value
+            dato = dd_equipo_l.value if dd_equipo_l.value else ""
 
         if not tienda or not dd_hojas.value:
             return mostrar_snack("Faltan datos", "amber")
@@ -208,7 +287,8 @@ def main(page: ft.Page):
             ws = state["sh"].worksheet(dd_hojas.value)
             state["ws"] = ws
             vals = ws.get_all_values()
-            headers = [str(h).upper().strip() for h in vals[0][:40]]
+            
+            headers = [str(h).upper().strip() for h in vals[0][:31]]
             state["headers"] = headers
             
             col_t = next((i for i, h in enumerate(headers) if "TIENDA" in h), 0)
@@ -225,17 +305,40 @@ def main(page: ft.Page):
             if found:
                 grid_res.controls.clear()
                 state["inputs"] = {}
-                while len(found) < len(headers): found.append("")
+                while len(found) < len(headers): 
+                    found.append("")
                 
                 for i, h in enumerate(headers):
-                    if not h: continue
-                    is_lock = any(x in h for x in ['TIENDA', 'ID', 'CAJA', 'TIPO'])
-                    txt = ft.TextField(label=h, value=str(found[i]), col={"xs": 12, "md": 6}, read_only=is_lock, filled=True, bgcolor="#2b2b2b" if not is_lock else "#1a1a1a")
-                    state["inputs"][h] = txt
-                    grid_res.controls.append(txt)
+                    if not h: 
+                        continue
+                    
+                    valor_actual = str(found[i])
+                    is_lock = any(x in h for x in ['TIENDA', 'ID', 'CAJA'])
+                    
+                    if h in OPCIONES_DROPDOWN:
+                        opts = [ft.dropdown.Option(opt) for opt in OPCIONES_DROPDOWN[h]]
+                        campo = ft.Dropdown(
+                            label=h,
+                            value=valor_actual,
+                            options=opts,
+                            width=400,
+                            text_size=16,
+                        )
+                    else:
+                        campo = ft.TextField(
+                            label=h, 
+                            value=valor_actual, 
+                            read_only=is_lock,
+                            width=400,
+                            height=60,
+                            bgcolor="#1a1a1a" if is_lock else None,
+                        )
+
+                    state["inputs"][h] = campo
+                    grid_res.controls.append(campo)
                 
                 card_res.visible = True
-                btn_save.disabled = False
+                btn_save.content.disabled = False
                 mostrar_snack("Encontrado", "#388E3C")
             else:
                 mostrar_snack("No encontrado", "red")
@@ -250,15 +353,28 @@ def main(page: ft.Page):
             state["ws"].update(range_name=f"A{state['row_idx']}", values=[row])
             mostrar_snack("Guardado", "#388E3C")
             card_res.visible = False
+            btn_save.content.disabled = True
         except Exception as ex:
             mostrar_snack(str(ex), "red")
         page.update()
 
-    page.add(header_container, tabs_control, btn_buscar, ft.Container(height=20), card_res)
+    # AGREGAR TODO
+    page.add(
+        ft.Row([
+            ft.Icon(name="inventory_2", color="#1976D2", size=30),
+            ft.Text("Inventario POS", size=24, weight="bold"),
+        ]),
+        ft.Container(height=20),
+        ft.Row([dd_hojas, btn_refresh]),
+        ft.Container(height=20),
+        tabs,
+        ft.Container(height=20),
+        btn_buscar,
+        ft.Container(height=30),
+        card_res,
+    )
+    
     conectar()
 
 if __name__ == "__main__":
-    # view=ft.WEB_BROWSER: Abre navegador y crea servidor web (necesario para celular)
-    # port=8550: Fija un puerto para que no cambie cada vez
-    # host="0.0.0.0": Permite que otros dispositivos (tu celular) entren
     ft.app(target=main, view=ft.WEB_BROWSER, port=8550, host="192.168.0.17")
