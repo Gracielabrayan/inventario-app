@@ -1,19 +1,17 @@
 import sys
 import os
 
-# --- PARCHE DE EMERGENCIA PARA ANDROID (CRÍTICO) ---
-# Esto arregla el error "No module named 'wsgiref'"
+# --- PARCHE DE EMERGENCIA PARA ANDROID ---
 try:
     import wsgiref.util
     import wsgiref.simple_server
 except ImportError:
-    # Si estamos en Android y falla, creamos módulos falsos
     from unittest.mock import MagicMock
     m = MagicMock()
     sys.modules["wsgiref"] = m
     sys.modules["wsgiref.util"] = m
     sys.modules["wsgiref.simple_server"] = m
-# ---------------------------------------------------
+# ----------------------------------------
 
 import flet as ft
 import json
@@ -57,28 +55,21 @@ def main(page: ft.Page):
     page.title = "Sistema POS"
     page.theme_mode = "dark"
     page.bgcolor = "#0f0f0f"
-    page.padding = 20
-    page.scroll = "auto"
+    page.padding = 10 # Menos padding para ganar espacio
+    page.scroll = "auto" # Habilitar scroll
 
-    # --- LOGGER EN PANTALLA ---
+    # --- LOGGER (Ahora irá al final) ---
     log_view = ft.Column()
-    page.add(ft.Text("--- REGISTRO DE INICIO ---", color="grey"), log_view)
     
     def log(msg, color="yellow"):
-        log_view.controls.append(ft.Text(f"> {msg}", color=color, size=14))
+        log_view.controls.append(ft.Text(f"> {msg}", color=color, size=12)) # Texto más pequeño
         page.update()
-
-    log("Iniciando aplicación...")
 
     # --- CARGA DIFERIDA ---
     try:
-        log("Importando gspread...", "cyan")
         import gspread
-        log("Librerías OK.", "green")
     except Exception as e:
         log(f"FALLO IMPORT: {e}", "red")
-        # No retornamos aquí para que intente cargar la interfaz aunque falle la librería
-        # así puedes ver el error completo
 
     # --- ESTADO ---
     state = {
@@ -95,12 +86,13 @@ def main(page: ft.Page):
         page.update()
 
     # --- UI COMPONENTS ---
-    log("Construyendo interfaz...", "cyan")
     
-    dd_hojas = ft.Dropdown(hint_text="Seleccione hoja...", text_size=16, bgcolor="#333333", border_radius=8, filled=True, width=400)
-    
-    # Botón refrescar MANUAL
+    # Header compacto
+    dd_hojas = ft.Dropdown(hint_text="Hoja...", text_size=14, bgcolor="#333333", border_radius=8, filled=True, expand=True)
     btn_refresh = ft.IconButton(icon="refresh", icon_color="white", bgcolor="#333333", on_click=lambda _: conectar())
+    
+    # Fila de cabecera
+    header_row = ft.Row([dd_hojas, btn_refresh], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 
     dd_tienda_pos = ft.Dropdown(label="Tienda (POS)", width=300, text_size=16, icon="store")
     dd_caja_pos = ft.Dropdown(label="Caja #", width=300, text_size=16, disabled=True, icon="point_of_sale")
@@ -117,8 +109,7 @@ def main(page: ft.Page):
             dd_caja_pos.disabled = not bool(cajas)
             dd_caja_pos.value = None
             page.update()
-        except Exception as ex:
-            log(f"Error UI Cajas: {ex}", "red")
+        except: pass
 
     def actualizar_equipos(e):
         try:
@@ -127,8 +118,7 @@ def main(page: ft.Page):
             dd_equipo_l.disabled = not bool(eqs)
             if eqs: dd_equipo_l.value = str(eqs[0])
             page.update()
-        except Exception as ex:
-            log(f"Error UI Equipos: {ex}", "red")
+        except: pass
 
     dd_tienda_pos.on_change = actualizar_cajas_pos
     dd_tienda_l.on_change = actualizar_equipos
@@ -161,45 +151,39 @@ def main(page: ft.Page):
     dd_hojas.on_change = on_hoja_change
     
     tabs = ft.Tabs(
-        selected_index=0, height=220, on_change=on_tab_change,
+        selected_index=0, height=200, on_change=on_tab_change,
         tabs=[
-            ft.Tab(text="POS", icon="keyboard", content=ft.Container(content=ft.Column([dd_tienda_pos, dd_caja_pos], spacing=15), padding=20)),
-            ft.Tab(text="BALANZAS", icon="list", content=ft.Container(content=ft.Column([dd_tienda_l, dd_equipo_l], spacing=15), padding=20)),
+            ft.Tab(text="POS", icon="keyboard", content=ft.Container(content=ft.Column([dd_tienda_pos, dd_caja_pos], spacing=10), padding=10)),
+            ft.Tab(text="BALANZAS", icon="list", content=ft.Container(content=ft.Column([dd_tienda_l, dd_equipo_l], spacing=10), padding=10)),
         ]
     )
 
     btn_buscar = ft.Container(content=ft.ElevatedButton("BUSCAR", icon="search", width=300, height=50, style=ft.ButtonStyle(bgcolor="#1976D2", color="white"), on_click=lambda e: buscar_datos(e)), alignment=ft.alignment.center)
     
     grid_res = ft.Column(spacing=15)
-    btn_save = ft.Container(content=ft.ElevatedButton("GUARDAR CAMBIOS", icon="save", disabled=True, width=300, height=50, style=ft.ButtonStyle(bgcolor="#388E3C", color="white"), on_click=lambda e: guardar(e)), alignment=ft.alignment.center)
-    card_res = ft.Container(content=ft.Column([ft.Text("Editar Datos", size=20, weight="bold"), ft.Divider(), grid_res, ft.Container(height=20), btn_save]), bgcolor="#1e1e1e", padding=20, border_radius=15, visible=False)
+    btn_save = ft.Container(content=ft.ElevatedButton("GUARDAR", icon="save", disabled=True, width=300, height=50, style=ft.ButtonStyle(bgcolor="#388E3C", color="white"), on_click=lambda e: guardar(e)), alignment=ft.alignment.center)
+    card_res = ft.Container(content=ft.Column([ft.Text("Editar Datos", size=18, weight="bold"), ft.Divider(), grid_res, ft.Container(height=20), btn_save]), bgcolor="#1e1e1e", padding=15, border_radius=15, visible=False)
 
     # --- LÓGICA CONEXIÓN ---
     def conectar():
-        log("Intentando conectar...", "yellow")
+        log("Conectando...", "cyan")
         try:
             btn_refresh.icon = "downloading"
             page.update()
             
-            # ASSETS
             if not os.path.exists(NOMBRE_LLAVE):
-                log(f"FATA: No existe {NOMBRE_LLAVE}", "red")
-                mostrar_snack("Faltan credenciales", "red")
+                log(f"Falta credencial", "red")
+                mostrar_snack("Falta credencial", "red")
                 return
             
-            log("Leyendo credenciales...", "cyan")
             gc = gspread.service_account(filename=NOMBRE_LLAVE)
-            
-            log("Abriendo Sheet...", "cyan")
             sh = gc.open_by_key(SPREADSHEET_ID)
             state["sh"] = sh
             
             hojas = [w.title for w in sh.worksheets()]
             dd_hojas.options = [ft.dropdown.Option(h) for h in hojas]
             if hojas: dd_hojas.value = hojas[0]
-            log(f"Hojas cargadas: {len(hojas)}", "green")
 
-            # Cargar JSONs
             for ruta, destino_state, dd_obj in [(NOMBRE_DATOS, "datos_tiendas", dd_tienda_l), (NOMBRE_DATOS_POS, "datos_pos", dd_tienda_pos)]:
                 if os.path.exists(ruta):
                     try:
@@ -207,19 +191,16 @@ def main(page: ft.Page):
                             data = json.load(f)
                             state[destino_state] = data
                             dd_obj.options = [ft.dropdown.Option(k) for k in sorted(data.keys())]
-                        log(f"JSON cargado: {ruta}", "green")
-                    except Exception as json_e:
-                        log(f"Error JSON {ruta}: {json_e}", "orange")
-                else:
-                    log(f"No existe JSON: {ruta}", "orange")
+                    except: pass
             
             btn_refresh.icon = "check"
-            mostrar_snack("Conectado Exitosamente", "#388E3C")
+            mostrar_snack("Conectado", "#388E3C")
+            log("Conectado OK", "green")
             
         except Exception as e:
             btn_refresh.icon = "error"
-            log(f"ERROR CRÍTICO: {e}", "red")
-            mostrar_snack("Error de conexión (Ver log)", "red")
+            log(f"Error: {e}", "red")
+            mostrar_snack("Error conexión", "red")
         page.update()
 
     def es_coincidencia(valor_celda, valor_buscado):
@@ -230,7 +211,6 @@ def main(page: ft.Page):
         return False
 
     def buscar_datos(e):
-        log("Buscando...", "cyan")
         try:
             if tabs.selected_index == 0:
                 tienda, dato = str(dd_tienda_pos.value).strip(), str(dd_caja_pos.value).strip() if dd_caja_pos.value else ""
@@ -280,13 +260,11 @@ def main(page: ft.Page):
                         campo = ft.TextField(label=h, value=val, read_only=is_lock, width=400, height=60, bgcolor="#1a1a1a" if is_lock else None)
                     state["inputs"][h] = campo; grid_res.controls.append(campo)
                 card_res.visible = True; btn_save.content.disabled = False; mostrar_snack("Encontrado", "#388E3C")
-                log("Dato encontrado.", "green")
             else: 
                 mostrar_snack(f"No encontrado", "red")
-                log("No se encontró coincidencia.", "orange")
         except Exception as ex: 
             mostrar_snack("Error búsqueda", "red")
-            log(f"Error búsqueda: {ex}", "red")
+            log(str(ex), "red")
         page.update()
 
     def guardar(e):
@@ -296,26 +274,27 @@ def main(page: ft.Page):
             mostrar_snack("Guardado", "#388E3C"); card_res.visible = False; btn_save.content.disabled = True
         except Exception as ex: 
             mostrar_snack("Error guardado", "red")
-            log(f"Error guardar: {ex}", "red")
+            log(str(ex), "red")
         page.update()
 
-    # --- MONTAJE FINAL (SIN BORRAR PANTALLA) ---
-    log("Añadiendo elementos visuales...", "cyan")
-    
-    # NO USAMOS page.clean() AQUÍ PARA QUE SE VEAN LOS ERRORES
+    # --- MONTAJE VISUAL OPTIMIZADO PARA MÓVIL ---
+    page.clean()
     page.add(
-        ft.Divider(),
-        ft.Row([ft.Icon(name="inventory_2", color="#1976D2", size=30), ft.Text("Inventario POS", size=24, weight="bold")]),
-        ft.Container(height=10),
-        ft.Row([dd_hojas, btn_refresh]),
+        ft.Row([ft.Icon(name="inventory_2", color="#1976D2", size=24), ft.Text("Inventario", size=20, weight="bold")]),
+        ft.Container(height=5),
+        header_row, # Botón y dropdown arriba
         ft.Container(height=10),
         tabs,
-        ft.Container(height=20),
+        ft.Container(height=10),
         btn_buscar,
-        ft.Container(height=30),
+        ft.Container(height=20),
         card_res,
+        ft.Divider(),
+        ft.Text("Log de sistema:", size=12, color="grey"),
+        log_view # Log al final
     )
-    log("Interfaz lista. Presione refrescar para conectar.", "green")
+    
+    log("Iniciando. Presione Refrescar.")
 
 if __name__ == "__main__":
     ft.app(target=main)
