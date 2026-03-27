@@ -27,7 +27,7 @@ jobs:
     - name: Instalar Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.22.x'
+        flutter-version: '3.24.x'
 
     - name: Instalar dependencias
       run: |
@@ -45,7 +45,7 @@ jobs:
     - name: Construir la APK
       run: |
         # Agregamos verbose para ver el error real si falla
-        flet build apk --verbose --org "com.inventario.app"
+        flet build apk --verbose --org "com.inventario.app" --no-rich
 
     - name: Subir la APK lista
       uses: actions/upload-artifact@v4
