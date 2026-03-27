@@ -27,8 +27,8 @@ jobs:
       - name: Instalar Flutter
         uses: subosito/flutter-action@v2
         with:
-          # Usamos la versión estable más reciente para evitar que Flet se queje
-          flutter-version: '3.24.x' 
+          # Ponemos la última estable para que Flet tenga de donde agarrarse
+          channel: 'stable'
 
       - name: Instalar dependencias
         run: |
@@ -40,9 +40,9 @@ jobs:
           mkdir -p assets
           echo '${{ secrets.GCP_CREDENTIALS }}' > assets/credentials.json
 
-      - name: Construir la APK
+      - name: Construir la APK (Modo Forzado)
         run: |
-          flet build apk --verbose --org "com.inventario.app"
+          printf "y\n" | flet build apk --verbose --org "com.inventario.app"
 
       - name: Subir la APK lista
         uses: actions/upload-artifact@v4
