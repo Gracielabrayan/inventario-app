@@ -27,9 +27,14 @@ jobs:
       run: |
         pip install flet gspread
 
+    - name: Create credentials file
+      run: |
+        mkdir -p assets
+        echo '${{ secrets.GCP_CREDENTIALS }}' > assets/credentials.json
+
     - name: Construir la APK
       run: |
-        flet build apk --org "com.inventario.app" --project "Inventario"
+        flet build apk --org "com.inventario.app" --project "Inventario POS"
 
     - name: Subir la APK lista
       uses: actions/upload-artifact@v4  # <--- AQUÍ ESTABA EL ERROR (Ahora es v4)
