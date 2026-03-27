@@ -42,7 +42,7 @@ jobs:
 
       - name: Construir la APK
         run: |
-          flet build apk --verbose --org "com.inventario.app" --assets assets
+          flet build apk --verbose --org "com.inventario.app"
 
       - name: Subir la APK lista
         uses: actions/upload-artifact@v4
