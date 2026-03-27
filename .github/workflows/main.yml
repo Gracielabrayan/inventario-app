@@ -3,7 +3,7 @@ name: Construir APK de Android
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: # Esto habilita un botón manual para iniciar si quieres
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,26 +18,38 @@ jobs:
       with:
         python-version: '3.11'
 
+    - name: Instalar Java (Necesario para Android SDK)
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
     - name: Instalar Flutter
       uses: subosito/flutter-action@v2
       with:
         flutter-version: '3.22.x'
 
-    - name: Instalar Flet y librerías
+    - name: Instalar dependencias
       run: |
-        pip install flet gspread
+        python -m pip install --upgrade pip
+        # Usamos tu requirements.txt para que no falte nada
+        pip install -r requirements.txt
+        pip install flet
 
     - name: Create credentials file
       run: |
         mkdir -p assets
+        # Importante: Las comillas simples evitan que se rompa el JSON
         echo '${{ secrets.GCP_CREDENTIALS }}' > assets/credentials.json
 
     - name: Construir la APK
       run: |
-        flet build apk --org "com.inventario.app" --project "Inventario POS"
+        # Agregamos verbose para ver el error real si falla
+        flet build apk --verbose --org "com.inventario.app"
 
     - name: Subir la APK lista
-      uses: actions/upload-artifact@v4  # <--- AQUÍ ESTABA EL ERROR (Ahora es v4)
+      uses: actions/upload-artifact@v4
       with:
         name: app-inventario-release
+        # Ruta estándar de salida de Flet
         path: build/apk/*.apk
