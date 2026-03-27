@@ -1,24 +1,13 @@
-name: Construir APK de Android
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
+steps:
     - name: Descargar código
       uses: actions/checkout@v4
 
     - name: Preparar Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.11' # Mantenemos estabilidad
 
-    - name: Instalar Java (Necesario para Android SDK)
+    - name: Instalar Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
@@ -27,29 +16,21 @@ jobs:
     - name: Instalar Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.24.x'
+        # Forzamos la versión que te pidió el log
+        flutter-version: '3.41.4' 
 
     - name: Instalar dependencias
       run: |
         python -m pip install --upgrade pip
-        # Usamos tu requirements.txt para que no falte nada
         pip install -r requirements.txt
         pip install flet
 
-    - name: Create credentials file
+    - name: Crear archivo de credenciales
       run: |
         mkdir -p assets
-        # Importante: Las comillas simples evitan que se rompa el JSON
         echo '${{ secrets.GCP_CREDENTIALS }}' > assets/credentials.json
 
     - name: Construir la APK
       run: |
-        # Agregamos verbose para ver el error real si falla
-        flet build apk --verbose --org "com.inventario.app" --no-rich
-
-    - name: Subir la APK lista
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-inventario-release
-        # Ruta estándar de salida de Flet
-        path: build/apk/*.apk
+        # El comando 'yes' le dice que SI a cualquier pregunta automática
+        yes | flet build apk --verbose --org "com.inventario.app"
