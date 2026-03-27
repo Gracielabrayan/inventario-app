@@ -46,9 +46,9 @@ OPCIONES_DROPDOWN = {
 }
 
 # Rutas relativas para Android
-NOMBRE_LLAVE = "assets/credentials.json"
-NOMBRE_DATOS = "assets/tiendas.json"
-NOMBRE_DATOS_POS = "assets/tiendas_pos.json"
+NOMBRE_LLAVE = "credentials.json"
+NOMBRE_DATOS = "tiendas.json"
+NOMBRE_DATOS_POS = "tiendas_pos.json"
 
 def main(page: ft.Page):
     # Config visual
@@ -297,4 +297,4 @@ def main(page: ft.Page):
     log("Iniciando. Presione Refrescar.")
 
 if __name__ == "__main__":
-    ft.app(target=main)
+    ft.app(target=main, assets_dir="assets")
