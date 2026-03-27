@@ -42,8 +42,7 @@ jobs:
 
       - name: Construir la APK
         run: |
-          # El comando 'yes' es para que no se trabe pidiendo permisos
-          yes | flet build apk --verbose --org "com.inventario.app"
+          flet build apk --verbose --org "com.inventario.app" --assets assets
 
       - name: Subir la APK lista
         uses: actions/upload-artifact@v4
